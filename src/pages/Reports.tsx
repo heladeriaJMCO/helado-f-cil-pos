@@ -116,7 +116,7 @@ const Reports = () => {
             <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">No hay ventas en este período</td></tr> :
             filteredSales.map((s) =>
             <tr key={s.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 text-sm text-foreground py-[8px] pt-0 pb-0 shadow-sm">{new Date(s.createdAt).toLocaleString()}</td>
+                  <td className="px-4 text-sm text-foreground py-[8px]">{new Date(s.createdAt).toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground hidden md:table-cell">{s.items.map((i) => `${i.productName} x${i.quantity}`).join(', ')}</td>
                   <td className="px-4 py-3 text-sm font-semibold text-foreground text-right">${s.total.toLocaleString()}</td>
                   <td className="px-4 py-3 text-sm text-muted-foreground text-right hidden sm:table-cell">{s.payments.map((p) => paymentLabels[p.method]).join(' + ')}</td>
