@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useDataStore } from '@/store/dataStore';
 import { useAuthStore } from '@/store/authStore';
-import { Wallet, Plus, Minus, DollarSign, Clock, Check, AlertCircle } from 'lucide-react';
+import { attemptSync } from '@/lib/syncService';
+import { Wallet, Plus, Minus, DollarSign, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CashRegister = () => {
   const user = useAuthStore(s => s.user);
+  const currentSessionId = useAuthStore(s => s.currentSessionId);
   const { cashRegisters, cashMovements, sales, addCashRegister, closeCashRegister, addCashMovement, getOpenRegister } = useDataStore();
 
   const openRegister = getOpenRegister(user?.id ?? '');
@@ -18,14 +20,14 @@ const CashRegister = () => {
   const registerMovements = openRegister
     ? cashMovements.filter(m => m.cashRegisterId === openRegister.id)
     : [];
-  
+
   const registerSales = openRegister
     ? sales.filter(s => s.cashRegisterId === openRegister.id)
     : [];
 
-  const totalSales = registerSales.reduce((sum, s) => sum + s.total, 0);
-  const totalIncome = registerMovements.filter(m => m.type === 'income').reduce((sum, m) => sum + m.amount, 0);
-  const totalExpense = registerMovements.filter(m => m.type === 'expense').reduce((sum, m) => sum + m.amount, 0);
+  const totalSales = registerSales.filter(s => !s.reversed).reduce((sum, s) => sum + s.total, 0);
+  const totalIncome = registerMovements.filter(m => m.type === 'income' && !m.reversed).reduce((sum, m) => sum + m.amount, 0);
+  const totalExpense = registerMovements.filter(m => m.type === 'expense' && !m.reversed).reduce((sum, m) => sum + m.amount, 0);
   const expectedAmount = (openRegister?.openingAmount ?? 0) + totalSales + totalIncome - totalExpense;
 
   const handleOpen = () => {
@@ -50,17 +52,27 @@ const CashRegister = () => {
       amount: movementAmount,
       description: movementDesc,
       createdAt: new Date().toISOString(),
+      loginSessionId: currentSessionId ?? '',
     });
     toast.success(`${movementType === 'income' ? 'Ingreso' : 'Egreso'} registrado`);
     setMovementAmount(0);
     setMovementDesc('');
   };
 
-  const handleClose = () => {
+  const handleClose = async () => {
     if (!openRegister) return;
     closeCashRegister(openRegister.id, closingAmount);
     toast.success('Caja cerrada');
     setClosingAmount(0);
+
+    // Attempt sync after closing
+    toast.info('Intentando sincronizar datos...');
+    const ok = await attemptSync();
+    if (ok) {
+      toast.success('Datos sincronizados con el servidor');
+    } else {
+      toast.warning('No se pudo sincronizar. Se reintentará automáticamente.');
+    }
   };
 
   return (
@@ -94,7 +106,6 @@ const CashRegister = () => {
         </div>
       ) : (
         <div className="space-y-6 animate-fade-in">
-          {/* Summary cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: 'Apertura', value: openRegister.openingAmount, icon: <Clock className="w-4 h-4" />, color: 'text-info' },
@@ -120,45 +131,25 @@ const CashRegister = () => {
             <p className="text-xs text-muted-foreground">{registerSales.length} ventas en este turno</p>
           </div>
 
-          {/* Add movement */}
           <div className="bg-card rounded-xl border border-border p-4 pos-shadow">
             <h3 className="font-semibold text-foreground mb-3">Registrar Movimiento</h3>
             <div className="flex gap-2 mb-3">
-              <button
-                onClick={() => setMovementType('income')}
-                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${movementType === 'income' ? 'border-success bg-success/10 text-success' : 'border-border text-muted-foreground'}`}
-              >
+              <button onClick={() => setMovementType('income')} className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${movementType === 'income' ? 'border-success bg-success/10 text-success' : 'border-border text-muted-foreground'}`}>
                 <Plus className="w-4 h-4 inline mr-1" /> Ingreso
               </button>
-              <button
-                onClick={() => setMovementType('expense')}
-                className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${movementType === 'expense' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-border text-muted-foreground'}`}
-              >
+              <button onClick={() => setMovementType('expense')} className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${movementType === 'expense' ? 'border-destructive bg-destructive/10 text-destructive' : 'border-border text-muted-foreground'}`}>
                 <Minus className="w-4 h-4 inline mr-1" /> Egreso
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
-              <input
-                type="number"
-                min="0"
-                value={movementAmount || ''}
-                onChange={e => setMovementAmount(Number(e.target.value))}
-                className="px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Monto"
-              />
-              <input
-                value={movementDesc}
-                onChange={e => setMovementDesc(e.target.value)}
-                className="px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="Descripción"
-              />
+              <input type="number" min="0" value={movementAmount || ''} onChange={e => setMovementAmount(Number(e.target.value))} className="px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Monto" />
+              <input value={movementDesc} onChange={e => setMovementDesc(e.target.value)} className="px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Descripción" />
             </div>
             <button onClick={handleAddMovement} disabled={movementAmount <= 0 || !movementDesc} className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity">
               Registrar
             </button>
           </div>
 
-          {/* Recent movements */}
           {registerMovements.length > 0 && (
             <div className="bg-card rounded-xl border border-border p-4 pos-shadow">
               <h3 className="font-semibold text-foreground mb-3">Movimientos del turno</h3>
@@ -178,7 +169,6 @@ const CashRegister = () => {
             </div>
           )}
 
-          {/* Close register */}
           <div className="bg-card rounded-xl border border-destructive/20 p-4">
             <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-destructive" />
@@ -187,14 +177,7 @@ const CashRegister = () => {
             <div className="flex gap-3 items-end">
               <div className="flex-1">
                 <label className="text-sm text-muted-foreground">Monto real en caja</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={closingAmount || ''}
-                  onChange={e => setClosingAmount(Number(e.target.value))}
-                  className="w-full mt-1 px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="$0"
-                />
+                <input type="number" min="0" value={closingAmount || ''} onChange={e => setClosingAmount(Number(e.target.value))} className="w-full mt-1 px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" placeholder="$0" />
               </div>
               <button onClick={handleClose} className="px-6 py-2.5 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity">
                 Cerrar

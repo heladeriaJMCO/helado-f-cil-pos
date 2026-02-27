@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { purgeOldLocalData } from '@/lib/syncService';
 import { IceCream, Lock, Mail, AlertCircle } from 'lucide-react';
 
 const Login = () => {
@@ -8,23 +9,29 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const login = useAuthStore(s => s.login);
+  const users = useAuthStore(s => s.users);
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = (em: string, pw: string) => {
     setError('');
-    if (login(email, password)) {
+    if (login(em, pw)) {
+      // Purge old data after login
+      purgeOldLocalData();
       navigate('/pos');
     } else {
       setError('Credenciales inválidas');
     }
   };
 
-  const quickLogin = (email: string, password: string) => {
-    if (login(email, password)) {
-      navigate('/pos');
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleLogin(email, password);
   };
+
+  // Quick login buttons for first 3 users
+  const quickUsers = users.filter(u => u.active).slice(0, 3);
+  const roleIcons: Record<string, string> = { admin: '👑', manager: '📋', seller: '🛒' };
+  const roleNames: Record<string, string> = { admin: 'Admin', manager: 'Encargado', seller: 'Vendedor' };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -84,25 +91,23 @@ const Login = () => {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-3 text-center">Acceso rápido (demo)</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Admin', email: 'admin@heladeria.com', pw: 'admin123', icon: '👑' },
-                { label: 'Encargado', email: 'encargado@heladeria.com', pw: 'enc123', icon: '📋' },
-                { label: 'Vendedor', email: 'vendedor@heladeria.com', pw: 'vend123', icon: '🛒' },
-              ].map(u => (
-                <button
-                  key={u.email}
-                  onClick={() => quickLogin(u.email, u.pw)}
-                  className="flex flex-col items-center gap-1 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
-                >
-                  <span className="text-xl">{u.icon}</span>
-                  <span className="text-foreground font-medium">{u.label}</span>
-                </button>
-              ))}
+          {quickUsers.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-3 text-center">Acceso rápido</p>
+              <div className="grid grid-cols-3 gap-2">
+                {quickUsers.map(u => (
+                  <button
+                    key={u.email}
+                    onClick={() => handleLogin(u.email, u.password)}
+                    className="flex flex-col items-center gap-1 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
+                  >
+                    <span className="text-xl">{roleIcons[u.role] ?? '👤'}</span>
+                    <span className="text-foreground font-medium">{roleNames[u.role] ?? u.role}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
