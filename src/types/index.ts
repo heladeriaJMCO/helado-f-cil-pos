@@ -102,6 +102,7 @@ export interface CashRegister {
   closingAmount?: number;
   expectedAmount?: number;
   status: 'open' | 'closed';
+  synced?: boolean;
 }
 
 export interface CashMovement {
@@ -114,6 +115,7 @@ export interface CashMovement {
   loginSessionId?: string;
   reversed?: boolean;
   reversedMovementId?: string;
+  synced?: boolean;
 }
 
 export interface StockMovement {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useDataStore } from '@/store/dataStore';
 import { useAuthStore } from '@/store/authStore';
 import { attemptSync } from '@/lib/syncService';
@@ -11,7 +11,17 @@ const CashRegister = () => {
   const { cashRegisters, cashMovements, sales, addCashRegister, closeCashRegister, addCashMovement, getOpenRegister } = useDataStore();
 
   const openRegister = getOpenRegister(user?.id ?? '');
-  const [openingAmount, setOpeningAmount] = useState(0);
+
+  // Get last closed register's closing amount as default opening
+  const lastClosedRegister = useMemo(() => {
+    const closed = cashRegisters
+      .filter(cr => cr.userId === (user?.id ?? '') && cr.status === 'closed' && cr.closingAmount != null)
+      .sort((a, b) => (b.closedAt ?? '').localeCompare(a.closedAt ?? ''));
+    return closed[0] ?? null;
+  }, [cashRegisters, user]);
+
+  const defaultOpeningAmount = lastClosedRegister?.closingAmount ?? 0;
+  const [openingAmount, setOpeningAmount] = useState(defaultOpeningAmount);
   const [movementType, setMovementType] = useState<'income' | 'expense'>('income');
   const [movementAmount, setMovementAmount] = useState(0);
   const [movementDesc, setMovementDesc] = useState('');
@@ -25,20 +35,41 @@ const CashRegister = () => {
     ? sales.filter(s => s.cashRegisterId === openRegister.id)
     : [];
 
-  const totalSales = registerSales.filter(s => !s.reversed).reduce((sum, s) => sum + s.total, 0);
+  // Cash-only calculations for arqueo
+  const totalSalesCash = registerSales.filter(s => !s.reversed).reduce((sum, s) => {
+    return sum + s.payments.filter(p => p.method === 'cash').reduce((ps, p) => ps + p.amount, 0);
+  }, 0);
   const totalIncome = registerMovements.filter(m => m.type === 'income' && !m.reversed).reduce((sum, m) => sum + m.amount, 0);
   const totalExpense = registerMovements.filter(m => m.type === 'expense' && !m.reversed).reduce((sum, m) => sum + m.amount, 0);
-  const expectedAmount = (openRegister?.openingAmount ?? 0) + totalSales + totalIncome - totalExpense;
+  const expectedAmount = (openRegister?.openingAmount ?? 0) + totalSalesCash + totalIncome - totalExpense;
 
   const handleOpen = () => {
-    addCashRegister({
+    const newRegister = {
       id: crypto.randomUUID(),
       branchId: user?.branchId ?? '1',
       userId: user?.id ?? '',
       openedAt: new Date().toISOString(),
-      openingAmount,
-      status: 'open',
-    });
+      openingAmount: defaultOpeningAmount,
+      status: 'open' as const,
+      synced: false,
+    };
+
+    addCashRegister(newRegister);
+
+    // If user entered a different amount, generate adjustment movement
+    const diff = openingAmount - defaultOpeningAmount;
+    if (diff !== 0) {
+      addCashMovement({
+        id: crypto.randomUUID(),
+        cashRegisterId: newRegister.id,
+        type: diff > 0 ? 'income' : 'expense',
+        amount: Math.abs(diff),
+        description: `Ajuste de apertura (diferencia: $${diff.toLocaleString()})`,
+        createdAt: new Date().toISOString(),
+        loginSessionId: currentSessionId ?? '',
+      });
+    }
+
     toast.success('Caja abierta');
     setOpeningAmount(0);
   };
@@ -65,7 +96,6 @@ const CashRegister = () => {
     toast.success('Caja cerrada');
     setClosingAmount(0);
 
-    // Attempt sync after closing
     toast.info('Intentando sincronizar datos...');
     const ok = await attemptSync();
     if (ok) {
@@ -86,7 +116,14 @@ const CashRegister = () => {
         <div className="bg-card rounded-xl border border-border p-8 text-center pos-shadow animate-fade-in">
           <Wallet className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-foreground mb-2">No hay caja abierta</h2>
-          <p className="text-sm text-muted-foreground mb-6">Ingresa el monto inicial para abrir tu caja</p>
+          <p className="text-sm text-muted-foreground mb-2">
+            {defaultOpeningAmount > 0
+              ? `Último cierre: $${defaultOpeningAmount.toLocaleString()}`
+              : 'Ingresa el monto inicial para abrir tu caja'}
+          </p>
+          <p className="text-xs text-muted-foreground mb-6">
+            Confirmá o corregí el monto. Si difiere se generará un movimiento de ajuste.
+          </p>
           <div className="max-w-xs mx-auto space-y-4">
             <div>
               <label className="text-sm text-muted-foreground">Monto de apertura</label>
@@ -109,7 +146,7 @@ const CashRegister = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: 'Apertura', value: openRegister.openingAmount, icon: <Clock className="w-4 h-4" />, color: 'text-info' },
-              { label: 'Ventas', value: totalSales, icon: <DollarSign className="w-4 h-4" />, color: 'text-success' },
+              { label: 'Ventas (Efvo)', value: totalSalesCash, icon: <DollarSign className="w-4 h-4" />, color: 'text-success' },
               { label: 'Ingresos', value: totalIncome, icon: <Plus className="w-4 h-4" />, color: 'text-accent' },
               { label: 'Egresos', value: totalExpense, icon: <Minus className="w-4 h-4" />, color: 'text-destructive' },
             ].map(item => (
@@ -125,10 +162,10 @@ const CashRegister = () => {
 
           <div className="bg-card rounded-xl border border-border p-4 pos-shadow">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-medium text-muted-foreground">Monto esperado en caja</span>
+              <span className="text-sm font-medium text-muted-foreground">Efectivo esperado en caja</span>
               <span className="text-2xl font-bold text-primary">${expectedAmount.toLocaleString()}</span>
             </div>
-            <p className="text-xs text-muted-foreground">{registerSales.length} ventas en este turno</p>
+            <p className="text-xs text-muted-foreground">{registerSales.filter(s => !s.reversed).length} ventas en este turno</p>
           </div>
 
           <div className="bg-card rounded-xl border border-border p-4 pos-shadow">
@@ -176,7 +213,7 @@ const CashRegister = () => {
             </h3>
             <div className="flex gap-3 items-end">
               <div className="flex-1">
-                <label className="text-sm text-muted-foreground">Monto real en caja</label>
+                <label className="text-sm text-muted-foreground">Monto real en caja (efectivo)</label>
                 <input type="number" min="0" value={closingAmount || ''} onChange={e => setClosingAmount(Number(e.target.value))} className="w-full mt-1 px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" placeholder="$0" />
               </div>
               <button onClick={handleClose} className="px-6 py-2.5 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity">

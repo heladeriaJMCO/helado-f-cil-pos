@@ -44,7 +44,7 @@ const CashDetail = () => {
       return;
     }
 
-    // Create reversed sale
+    // Create reversed sale (negative clone) — original stays intact
     const reversedSale = {
       ...original,
       id: crypto.randomUUID(),
@@ -57,16 +57,15 @@ const CashDetail = () => {
       createdAt: new Date().toISOString(),
       reversed: false,
       reversedSaleId: original.id,
+      synced: false,
       loginSessionId: currentSessionId ?? '',
     };
 
     addSale(reversedSale);
 
     // Mark original as reversed
-    const updatedOriginal = { ...original, reversed: true };
-    // We'll just add a flag; the updateSale isn't in store but we can use the state
     useDataStore.setState(s => ({
-      sales: s.sales.map(x => x.id === original.id ? updatedOriginal : x)
+      sales: s.sales.map(x => x.id === original.id ? { ...x, reversed: true } : x)
     }));
 
     // Restore stock
@@ -102,6 +101,11 @@ const CashDetail = () => {
     toast.success('Movimiento revertido');
   };
 
+  // Helper: get payment amount by method for a sale
+  const getPaymentByMethod = (sale: typeof registerSales[0], method: PaymentMethod) => {
+    return sale.payments.filter(p => p.method === method).reduce((s, p) => s + p.amount, 0);
+  };
+
   if (!openRegister) {
     return (
       <div className="p-4 lg:p-6 max-w-5xl mx-auto">
@@ -117,7 +121,7 @@ const CashDetail = () => {
   }
 
   return (
-    <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 lg:p-6 max-w-6xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Receipt className="w-6 h-6 text-primary" />
         <h1 className="text-2xl font-display font-bold text-foreground">Detalle de Caja</h1>
@@ -146,40 +150,51 @@ const CashDetail = () => {
         <div className="px-4 py-3 border-b border-border">
           <h3 className="font-semibold text-foreground">Comprobantes de Venta</h3>
         </div>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-border bg-muted/50">
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Hora</th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase hidden md:table-cell">Items</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Uds.</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Total</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase hidden sm:table-cell">Pago</th>
-              <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            {registerSales.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-sm">Sin ventas</td></tr>
-            ) : registerSales.map(s => (
-              <tr key={s.id} className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${s.reversed ? 'opacity-50' : ''} ${s.reversedSaleId ? 'bg-destructive/5' : ''}`}>
-                <td className="px-4 py-2 text-sm text-foreground">{new Date(s.createdAt).toLocaleTimeString()}</td>
-                <td className="px-4 py-2 text-sm text-muted-foreground hidden md:table-cell">{s.items.map(i => `${i.productName} x${i.quantity}`).join(', ')}</td>
-                <td className="px-4 py-2 text-sm text-right text-foreground">{s.items.reduce((sum, i) => sum + Math.abs(i.quantity), 0)}</td>
-                <td className="px-4 py-2 text-sm font-semibold text-right text-foreground">${s.total.toLocaleString()}</td>
-                <td className="px-4 py-2 text-sm text-muted-foreground text-right hidden sm:table-cell">{s.payments.map(p => paymentLabels[p.method]).join(' + ')}</td>
-                <td className="px-4 py-2 text-center">
-                  {!s.reversed && !s.reversedSaleId && (
-                    <button onClick={() => handleReverseSale(s.id)} className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors" title="Revertir venta">
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-                  )}
-                  {s.reversed && <span className="text-xs text-destructive">Revertida</span>}
-                  {s.reversedSaleId && <span className="text-xs text-warning">Reversión</span>}
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border bg-muted/50">
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Hora</th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground uppercase hidden md:table-cell">Items</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Uds.</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Efectivo</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Tarjeta</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Transf.</th>
+                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Total</th>
+                <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground uppercase">Acción</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {registerSales.length === 0 ? (
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground text-sm">Sin ventas</td></tr>
+              ) : registerSales.map(s => {
+                const cashAmt = getPaymentByMethod(s, 'cash');
+                const cardAmt = getPaymentByMethod(s, 'card');
+                const transferAmt = getPaymentByMethod(s, 'transfer');
+                return (
+                  <tr key={s.id} className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${s.reversed ? 'opacity-50' : ''} ${s.reversedSaleId ? 'bg-destructive/5' : ''}`}>
+                    <td className="px-4 py-2 text-sm text-foreground">{new Date(s.createdAt).toLocaleTimeString()}</td>
+                    <td className="px-4 py-2 text-sm text-muted-foreground hidden md:table-cell">{s.items.map(i => `${i.productName} x${i.quantity}`).join(', ')}</td>
+                    <td className="px-4 py-2 text-sm text-right text-foreground">{s.items.reduce((sum, i) => sum + Math.abs(i.quantity), 0)}</td>
+                    <td className="px-4 py-2 text-sm text-right text-foreground">{cashAmt !== 0 ? `$${cashAmt.toLocaleString()}` : '-'}</td>
+                    <td className="px-4 py-2 text-sm text-right text-foreground">{cardAmt !== 0 ? `$${cardAmt.toLocaleString()}` : '-'}</td>
+                    <td className="px-4 py-2 text-sm text-right text-foreground">{transferAmt !== 0 ? `$${transferAmt.toLocaleString()}` : '-'}</td>
+                    <td className="px-4 py-2 text-sm font-semibold text-right text-foreground">${s.total.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-center">
+                      {!s.reversed && !s.reversedSaleId && (
+                        <button onClick={() => handleReverseSale(s.id)} className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors" title="Revertir venta">
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      )}
+                      {s.reversed && <span className="text-xs text-destructive">Revertida</span>}
+                      {s.reversedSaleId && <span className="text-xs text-warning">Reversión</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Movements */}
