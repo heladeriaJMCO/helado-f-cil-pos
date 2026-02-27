@@ -14,8 +14,8 @@ export async function attemptSync(): Promise<boolean> {
   try {
     const payload = {
       sales: state.sales.filter(s => !s.synced),
-      cashRegisters: state.cashRegisters,
-      cashMovements: state.cashMovements,
+      cashRegisters: state.cashRegisters.filter(cr => !cr.synced),
+      cashMovements: state.cashMovements.filter(cm => !cm.synced),
       products: state.products,
       categories: state.categories,
       priceLists: state.priceLists,
@@ -30,9 +30,11 @@ export async function attemptSync(): Promise<boolean> {
     });
 
     if (response.ok) {
-      // Mark sales as synced
+      // Mark all records as synced
       useDataStore.setState(s => ({
         sales: s.sales.map(sale => ({ ...sale, synced: true })),
+        cashRegisters: s.cashRegisters.map(cr => ({ ...cr, synced: true })),
+        cashMovements: s.cashMovements.map(cm => ({ ...cm, synced: true })),
         companyConfig: {
           ...s.companyConfig,
           lastSyncDate: new Date().toISOString(),

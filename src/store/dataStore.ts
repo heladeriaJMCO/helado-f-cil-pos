@@ -118,14 +118,14 @@ export const useDataStore = create<DataState>()(
         return pp?.price ?? 0;
       },
 
-      addSale: (s) => set(state => ({ sales: [...state.sales, s] })),
+      addSale: (s) => set(state => ({ sales: [...state.sales, { ...s, synced: false }] })),
       updateSale: (s) => set(state => ({ sales: state.sales.map(x => x.id === s.id ? s : x) })),
 
-      addCashRegister: (cr) => set(s => ({ cashRegisters: [...s.cashRegisters, cr] })),
+      addCashRegister: (cr) => set(s => ({ cashRegisters: [...s.cashRegisters, { ...cr, synced: false }] })),
       closeCashRegister: (id, closingAmount) => set(s => ({
-        cashRegisters: s.cashRegisters.map(cr => cr.id === id ? { ...cr, closedAt: new Date().toISOString(), closingAmount, status: 'closed' as const } : cr)
+        cashRegisters: s.cashRegisters.map(cr => cr.id === id ? { ...cr, closedAt: new Date().toISOString(), closingAmount, status: 'closed' as const, synced: false } : cr)
       })),
-      addCashMovement: (cm) => set(s => ({ cashMovements: [...s.cashMovements, cm] })),
+      addCashMovement: (cm) => set(s => ({ cashMovements: [...s.cashMovements, { ...cm, synced: false }] })),
       getOpenRegister: (userId) => get().cashRegisters.find(cr => cr.userId === userId && cr.status === 'open'),
 
       updateCompanyConfig: (config) => set(s => ({ companyConfig: { ...s.companyConfig, ...config } })),

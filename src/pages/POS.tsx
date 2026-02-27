@@ -117,7 +117,7 @@ const POS = () => {
       total,
       priceListId: selectedPriceList,
       createdAt: new Date().toISOString(),
-      synced: navigator.onLine,
+      synced: false,
       reversed: false,
     };
 
