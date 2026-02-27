@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import {
   IceCream, ShoppingCart, Wallet, Package, Tag, ListOrdered,
-  BarChart3, LogOut, Menu, X, Wifi, WifiOff, ChevronRight
+  BarChart3, LogOut, Menu, Settings, Users, Receipt,
+  Wifi, WifiOff, ChevronRight
 } from 'lucide-react';
+import { startSyncSchedule, stopSyncSchedule } from '@/lib/syncService';
 import type { Role } from '@/types';
 
 interface NavItem {
@@ -17,10 +19,13 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/pos', label: 'Punto de Venta', icon: <ShoppingCart className="w-5 h-5" />, roles: ['admin', 'seller'] },
   { to: '/caja', label: 'Control de Caja', icon: <Wallet className="w-5 h-5" />, roles: ['admin', 'seller'] },
+  { to: '/caja-detalle', label: 'Detalle de Caja', icon: <Receipt className="w-5 h-5" />, roles: ['admin', 'seller'] },
   { to: '/productos', label: 'Productos', icon: <Package className="w-5 h-5" />, roles: ['admin', 'manager'] },
   { to: '/categorias', label: 'Categorías', icon: <Tag className="w-5 h-5" />, roles: ['admin', 'manager'] },
   { to: '/listas-precios', label: 'Listas de Precios', icon: <ListOrdered className="w-5 h-5" />, roles: ['admin'] },
   { to: '/reportes', label: 'Reportes', icon: <BarChart3 className="w-5 h-5" />, roles: ['admin', 'manager'] },
+  { to: '/usuarios', label: 'Usuarios', icon: <Users className="w-5 h-5" />, roles: ['admin'] },
+  { to: '/configuraciones', label: 'Configuraciones', icon: <Settings className="w-5 h-5" />, roles: ['admin'] },
 ];
 
 const roleLabels: Record<Role, string> = { admin: 'Administrador', manager: 'Encargado', seller: 'Vendedor' };
@@ -31,8 +36,7 @@ const AppLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
 
-  // Online/offline listener
-  useState(() => {
+  useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener('online', on);
@@ -41,7 +45,13 @@ const AppLayout = () => {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
     };
-  });
+  }, []);
+
+  // Start sync schedule
+  useEffect(() => {
+    startSyncSchedule();
+    return () => stopSyncSchedule();
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -52,12 +62,10 @@ const AppLayout = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-foreground/20 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-sidebar text-sidebar-foreground transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} flex flex-col`}>
         <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
           <div className="w-10 h-10 rounded-xl bg-sidebar-primary flex items-center justify-center">
@@ -105,7 +113,6 @@ const AppLayout = () => {
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 flex items-center px-4 border-b border-border bg-card lg:hidden">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-muted">

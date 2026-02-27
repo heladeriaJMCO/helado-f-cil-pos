@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Product, Category, PriceList, ProductPrice, Sale, CashRegister, CashMovement } from '@/types';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { idbStorage } from '@/lib/idb';
+import type { Product, Category, PriceList, ProductPrice, Sale, CashRegister, CashMovement, CompanyConfig } from '@/types';
 
-// Seed data
 const SEED_CATEGORIES: Category[] = [
   { id: '1', name: 'Cremas', icon: '🍦', active: true },
   { id: '2', name: 'Paletas', icon: '🍡', active: true },
@@ -38,6 +38,19 @@ const SEED_PRICES: ProductPrice[] = SEED_PRODUCTS.flatMap(p => [
   { productId: p.id, priceListId: '3', price: Math.round((Math.random() * 250 + 150) / 50) * 50 },
 ]);
 
+const DEFAULT_CONFIG: CompanyConfig = {
+  branchNumber: '1',
+  fantasyName: 'Heladería Demo',
+  legalName: '',
+  startDate: '',
+  cuit: '',
+  posNumber: '1',
+  address: '',
+  deliveryCost: 500,
+  serverIP: '',
+  lastSyncDate: '',
+};
+
 interface DataState {
   categories: Category[];
   products: Product[];
@@ -46,32 +59,25 @@ interface DataState {
   sales: Sale[];
   cashRegisters: CashRegister[];
   cashMovements: CashMovement[];
-  
-  // Categories
+  companyConfig: CompanyConfig;
+
   addCategory: (c: Category) => void;
   updateCategory: (c: Category) => void;
-  
-  // Products
   addProduct: (p: Product) => void;
   updateProduct: (p: Product) => void;
   updateStock: (productId: string, delta: number) => void;
-  
-  // Price Lists
   addPriceList: (pl: PriceList) => void;
   updatePriceList: (pl: PriceList) => void;
-  
-  // Prices
   setProductPrice: (pp: ProductPrice) => void;
   getPrice: (productId: string, priceListId: string) => number;
-  
-  // Sales
   addSale: (s: Sale) => void;
-  
-  // Cash
+  updateSale: (s: Sale) => void;
   addCashRegister: (cr: CashRegister) => void;
   closeCashRegister: (id: string, closingAmount: number) => void;
   addCashMovement: (cm: CashMovement) => void;
   getOpenRegister: (userId: string) => CashRegister | undefined;
+  updateCompanyConfig: (config: Partial<CompanyConfig>) => void;
+  purgeOldData: (beforeDate: string) => void;
 }
 
 export const useDataStore = create<DataState>()(
@@ -84,6 +90,7 @@ export const useDataStore = create<DataState>()(
       sales: [],
       cashRegisters: [],
       cashMovements: [],
+      companyConfig: DEFAULT_CONFIG,
 
       addCategory: (c) => set(s => ({ categories: [...s.categories, c] })),
       updateCategory: (c) => set(s => ({ categories: s.categories.map(x => x.id === c.id ? c : x) })),
@@ -112,6 +119,7 @@ export const useDataStore = create<DataState>()(
       },
 
       addSale: (s) => set(state => ({ sales: [...state.sales, s] })),
+      updateSale: (s) => set(state => ({ sales: state.sales.map(x => x.id === s.id ? s : x) })),
 
       addCashRegister: (cr) => set(s => ({ cashRegisters: [...s.cashRegisters, cr] })),
       closeCashRegister: (id, closingAmount) => set(s => ({
@@ -119,7 +127,18 @@ export const useDataStore = create<DataState>()(
       })),
       addCashMovement: (cm) => set(s => ({ cashMovements: [...s.cashMovements, cm] })),
       getOpenRegister: (userId) => get().cashRegisters.find(cr => cr.userId === userId && cr.status === 'open'),
+
+      updateCompanyConfig: (config) => set(s => ({ companyConfig: { ...s.companyConfig, ...config } })),
+
+      purgeOldData: (beforeDate) => set(s => ({
+        sales: s.sales.filter(sale => sale.createdAt >= beforeDate),
+        cashMovements: s.cashMovements.filter(cm => cm.createdAt >= beforeDate),
+        cashRegisters: s.cashRegisters.filter(cr => cr.openedAt >= beforeDate || cr.status === 'open'),
+      })),
     }),
-    { name: 'heladeria-data' }
+    {
+      name: 'heladeria-data',
+      storage: createJSONStorage(() => idbStorage),
+    }
   )
 );

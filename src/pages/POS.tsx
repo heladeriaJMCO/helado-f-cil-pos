@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useDataStore } from '@/store/dataStore';
 import { useAuthStore } from '@/store/authStore';
 import type { CartItem, PaymentMethod, PaymentSplit } from '@/types';
-import { ShoppingCart, Minus, Plus, Trash2, CreditCard, Banknote, ArrowRightLeft, Percent, Printer, Check, X } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, Trash2, CreditCard, Banknote, ArrowRightLeft, Percent, Check, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const PAYMENT_METHODS: { method: PaymentMethod; label: string; icon: React.ReactNode }[] = [
@@ -13,12 +13,14 @@ const PAYMENT_METHODS: { method: PaymentMethod; label: string; icon: React.React
 
 const POS = () => {
   const user = useAuthStore(s => s.user);
-  const { categories, products, priceLists, getPrice, addSale, updateStock, getOpenRegister } = useDataStore();
-  
+  const currentSessionId = useAuthStore(s => s.currentSessionId);
+  const { categories, products, priceLists, getPrice, addSale, updateStock, getOpenRegister, companyConfig } = useDataStore();
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedPriceList, setSelectedPriceList] = useState(priceLists.find(p => p.active)?.id ?? '1');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discount, setDiscount] = useState(0);
+  const [isDelivery, setIsDelivery] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [primaryPayment, setPrimaryPayment] = useState<PaymentMethod>('cash');
   const [secondaryPayment, setSecondaryPayment] = useState<PaymentMethod | null>(null);
@@ -32,13 +34,14 @@ const POS = () => {
   }, [products, selectedCategory]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.subtotal, 0), [cart]);
-  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount]);
+  const deliveryCost = isDelivery ? (companyConfig.deliveryCost || 0) : 0;
+  const total = useMemo(() => Math.max(0, subtotal - discount + deliveryCost), [subtotal, discount, deliveryCost]);
 
   const addToCart = useCallback((productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     const price = getPrice(productId, selectedPriceList);
-    
+
     setCart(prev => {
       const existing = prev.find(item => item.product.id === productId);
       if (existing) {
@@ -68,7 +71,6 @@ const POS = () => {
     setCart(prev => prev.filter(item => item.product.id !== productId));
   };
 
-  // When price list changes, update prices in cart
   const handlePriceListChange = (priceListId: string) => {
     setSelectedPriceList(priceListId);
     setCart(prev => prev.map(item => {
@@ -79,7 +81,7 @@ const POS = () => {
 
   const handleCompleteSale = () => {
     if (cart.length === 0) return;
-    
+
     const openRegister = getOpenRegister(user?.id ?? '');
     if (!openRegister) {
       toast.error('Debes abrir una caja antes de vender');
@@ -99,6 +101,7 @@ const POS = () => {
       branchId: user?.branchId ?? '1',
       userId: user?.id ?? '',
       cashRegisterId: openRegister.id,
+      loginSessionId: currentSessionId ?? '',
       items: cart.map(item => ({
         productId: item.product.id,
         productName: item.product.name,
@@ -109,19 +112,22 @@ const POS = () => {
       payments,
       subtotal,
       discount,
+      deliveryCost,
+      isDelivery,
       total,
       priceListId: selectedPriceList,
       createdAt: new Date().toISOString(),
       synced: navigator.onLine,
+      reversed: false,
     };
 
-    // Deduct stock
     cart.forEach(item => updateStock(item.product.id, -item.quantity));
     addSale(sale);
 
     toast.success(`Venta completada: $${total.toLocaleString()}`);
     setCart([]);
     setDiscount(0);
+    setIsDelivery(false);
     setShowPayment(false);
     setSecondaryPayment(null);
     setSecondaryAmount(0);
@@ -131,7 +137,6 @@ const POS = () => {
     <div className="flex h-full">
       {/* Product Grid */}
       <div className="flex-1 flex flex-col p-4 overflow-hidden">
-        {/* Top bar */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <select
             value={selectedPriceList}
@@ -144,7 +149,6 @@ const POS = () => {
           </select>
         </div>
 
-        {/* Category tabs */}
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2 flex-shrink-0">
           <button
             onClick={() => setSelectedCategory(null)}
@@ -167,7 +171,6 @@ const POS = () => {
           ))}
         </div>
 
-        {/* Products grid */}
         <div className="flex-1 overflow-y-auto">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filteredProducts.map(product => {
@@ -210,7 +213,6 @@ const POS = () => {
           <span className="ml-auto text-sm text-muted-foreground">{cart.length} ítems</span>
         </div>
 
-        {/* Cart items */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -244,6 +246,19 @@ const POS = () => {
 
         {/* Totals & Payment */}
         <div className="border-t border-border p-4 space-y-3">
+          {/* Delivery toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isDelivery}
+              onChange={e => setIsDelivery(e.target.checked)}
+              className="w-4 h-4 rounded border-input text-primary focus:ring-ring"
+            />
+            <Truck className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-foreground">Con envío</span>
+            {isDelivery && <span className="text-sm text-primary ml-auto">+${deliveryCost.toLocaleString()}</span>}
+          </label>
+
           {/* Discount */}
           <div className="flex items-center gap-2">
             <Percent className="w-4 h-4 text-muted-foreground" />
@@ -266,6 +281,12 @@ const POS = () => {
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Descuento</span>
               <span className="text-destructive">-${discount.toLocaleString()}</span>
+            </div>
+          )}
+          {isDelivery && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Envío</span>
+              <span className="text-foreground">+${deliveryCost.toLocaleString()}</span>
             </div>
           )}
           <div className="flex justify-between text-lg font-bold">
@@ -301,7 +322,6 @@ const POS = () => {
                 ))}
               </div>
 
-              {/* Secondary payment */}
               <div>
                 <p className="text-xs text-muted-foreground mb-2">Segundo medio (opcional)</p>
                 <div className="grid grid-cols-3 gap-2">

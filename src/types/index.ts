@@ -9,6 +9,10 @@ export interface User {
   active: boolean;
 }
 
+export interface UserWithPassword extends User {
+  password: string;
+}
+
 export interface Branch {
   id: string;
   name: string;
@@ -65,14 +69,19 @@ export interface Sale {
   branchId: string;
   userId: string;
   cashRegisterId: string;
+  loginSessionId: string;
   items: SaleItem[];
   payments: PaymentSplit[];
   subtotal: number;
   discount: number;
+  deliveryCost: number;
+  isDelivery: boolean;
   total: number;
   priceListId: string;
   createdAt: string;
   synced: boolean;
+  reversed: boolean;
+  reversedSaleId?: string;
 }
 
 export interface SaleItem {
@@ -102,6 +111,9 @@ export interface CashMovement {
   amount: number;
   description: string;
   createdAt: string;
+  loginSessionId?: string;
+  reversed?: boolean;
+  reversedMovementId?: string;
 }
 
 export interface StockMovement {
@@ -111,4 +123,24 @@ export interface StockMovement {
   type: 'in' | 'out' | 'sale';
   description: string;
   createdAt: string;
+}
+
+export interface LoginSession {
+  id: string;
+  userId: string;
+  userName: string;
+  loginAt: string;
+}
+
+export interface CompanyConfig {
+  branchNumber: string;
+  fantasyName: string;
+  legalName: string;
+  startDate: string;
+  cuit: string;
+  posNumber: string;
+  address: string;
+  deliveryCost: number;
+  serverIP: string;
+  lastSyncDate: string;
 }
