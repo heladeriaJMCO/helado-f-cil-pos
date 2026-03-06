@@ -4,9 +4,10 @@ import { useAuthStore } from '@/store/authStore';
 import {
   IceCream, ShoppingCart, Wallet, Package, Tag, ListOrdered,
   BarChart3, LogOut, Menu, Settings, Users, Receipt,
-  Wifi, WifiOff, ChevronRight
+  Wifi, WifiOff, ChevronRight, Download
 } from 'lucide-react';
 import { startSyncSchedule, stopSyncSchedule } from '@/lib/syncService';
+import { getDB } from '@/lib/idb';
 import type { Role } from '@/types';
 
 interface NavItem {
