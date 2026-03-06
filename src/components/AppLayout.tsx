@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { startSyncSchedule, stopSyncSchedule } from '@/lib/syncService';
 import { getDB } from '@/lib/idb';
+import { useDataStore } from '@/store/dataStore';
 import type { Role } from '@/types';
 
 interface NavItem {
@@ -71,13 +72,33 @@ const AppLayout = () => {
       for (const name of storeNames) {
         data[name] = await db.getAll(name);
       }
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const jsonString = JSON.stringify(data, null, 2);
+      const fileName = `heladeria-backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+      // Download locally
+      const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `heladeria-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
+
+      // Also save to server if configured
+      const { companyConfig } = useDataStore.getState();
+      if (companyConfig.serverIP) {
+        try {
+          await fetch(`http://${companyConfig.serverIP}/api/backup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileName, data }),
+            signal: AbortSignal.timeout(15000),
+          });
+          console.log('[Backup] Saved to server');
+        } catch (serverErr) {
+          console.warn('[Backup] Could not save to server:', serverErr);
+        }
+      }
     } catch (e) {
       console.error('Export failed', e);
     }
