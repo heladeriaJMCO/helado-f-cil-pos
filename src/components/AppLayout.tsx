@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { startSyncSchedule, stopSyncSchedule } from '@/lib/syncService';
 import { getDB } from '@/lib/idb';
+import { useDataStore } from '@/store/dataStore';
 import type { Role } from '@/types';
 
 interface NavItem {
