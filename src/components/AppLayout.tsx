@@ -129,6 +129,13 @@ const AppLayout = () => {
             {online ? 'Conectado' : 'Sin conexión'}
           </div>
           <button
+            onClick={handleExport}
+            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            Exportar Datos
+          </button>
+          <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
           >
