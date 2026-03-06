@@ -4,9 +4,10 @@ import { useAuthStore } from '@/store/authStore';
 import {
   IceCream, ShoppingCart, Wallet, Package, Tag, ListOrdered,
   BarChart3, LogOut, Menu, Settings, Users, Receipt,
-  Wifi, WifiOff, ChevronRight
+  Wifi, WifiOff, ChevronRight, Download
 } from 'lucide-react';
 import { startSyncSchedule, stopSyncSchedule } from '@/lib/syncService';
+import { getDB } from '@/lib/idb';
 import type { Role } from '@/types';
 
 interface NavItem {
@@ -58,6 +59,30 @@ const AppLayout = () => {
     navigate('/login');
   };
 
+  const handleExport = async () => {
+    try {
+      const db = await getDB();
+      const storeNames: Array<'config' | 'users' | 'categories' | 'products' | 'priceLists' | 'productPrices' | 'sales' | 'cashRegisters' | 'cashMovements' | 'loginSessions' | 'zustandState'> = [
+        'config', 'users', 'categories', 'products', 'priceLists',
+        'productPrices', 'sales', 'cashRegisters', 'cashMovements',
+        'loginSessions', 'zustandState',
+      ];
+      const data: Record<string, any[]> = {};
+      for (const name of storeNames) {
+        data[name] = await db.getAll(name);
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `heladeria-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export failed', e);
+    }
+  };
+
   const filteredItems = navItems.filter(item => hasPermission(item.roles));
 
   return (
@@ -103,6 +128,13 @@ const AppLayout = () => {
             {online ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
             {online ? 'Conectado' : 'Sin conexión'}
           </div>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            Exportar Datos
+          </button>
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent transition-colors"
