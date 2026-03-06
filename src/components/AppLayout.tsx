@@ -59,6 +59,30 @@ const AppLayout = () => {
     navigate('/login');
   };
 
+  const handleExport = async () => {
+    try {
+      const db = await getDB();
+      const storeNames: Array<'config' | 'users' | 'categories' | 'products' | 'priceLists' | 'productPrices' | 'sales' | 'cashRegisters' | 'cashMovements' | 'loginSessions' | 'zustandState'> = [
+        'config', 'users', 'categories', 'products', 'priceLists',
+        'productPrices', 'sales', 'cashRegisters', 'cashMovements',
+        'loginSessions', 'zustandState',
+      ];
+      const data: Record<string, any[]> = {};
+      for (const name of storeNames) {
+        data[name] = await db.getAll(name);
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `heladeria-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Export failed', e);
+    }
+  };
+
   const filteredItems = navItems.filter(item => hasPermission(item.roles));
 
   return (
